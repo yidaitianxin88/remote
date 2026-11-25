@@ -1,0 +1,28 @@
+﻿<!doctype html><meta charset="utf-8"><title>Remote</title>
+<style>body{margin:0;background:#000}canvas{width:100vw;height:100vh;object-fit:contain}</style>
+<canvas id="c"></canvas>
+<script>
+const c = document.getElementById("c"), x = c.getContext("2d");
+let dec, code = prompt("输入手机上的 6 位码");
+const ws = new WebSocket("wss://" + location.host + "/ws");
+ws.binaryType = "arraybuffer";
+ws.onopen = () => ws.send(JSON.stringify({ t: "join", code }));
+ws.onmessage = async (e) => {
+  if (typeof e.data === "string") {
+    const j = JSON.parse(e.data);
+    if (j.t === "cfg") {
+      const d = Uint8Array.from(atob(j.d), ch => ch.charCodeAt(0));
+      dec = new VideoDecoder({ output: f => { c.width = f.displayWidth; c.height = f.displayHeight; x.drawImage(f, 0, 0); f.close(); }, error: console.error });
+      dec.configure({ codec: "avc1.42E01E", description: d });
+    }
+  } else {
+    dec?.decode(new EncodedVideoChunk({ type: "key", timestamp: performance.now() * 1000, data: new Uint8Array(e.data) }));
+  }
+};
+const pos = ev => ({ x: ev.offsetX / c.clientWidth, y: ev.offsetY / c.clientHeight });
+c.onclick = ev => { const p = pos(ev); ws.send(JSON.stringify({ t: "tap", ...p })); };
+let d = null;
+c.onpointerdown = ev => { d = pos(ev); };
+c.onpointerup = ev => { const p = pos(ev); if (d) ws.send(JSON.stringify({ t: "swipe", x1: d.x, y1: d.y, x2: p.x, y2: p.y, ms: 200 })); d = null; };
+onkeydown = ev => { if (ev.key.length === 1) ws.send(JSON.stringify({ t: "text", s: ev.key })); };
+</script>
