@@ -19,7 +19,7 @@ const list = () => JSON.stringify({ t: "list", items: [...phones].map(([id, p]) 
 wss.on("connection", (s) => {
   s.on("message", (m, bin) => {
     if (bin) { if (s.peer) s.peer.send(m); return; }
-    const j = JSON.parse(m);
+    let j; try { j = JSON.parse(m); } catch { return; }
     if (j.t === "hello" && j.role === "phone") {
       s.role = "phone"; s.id = j.id;
       phones.set(j.id, { ws: s, name: j.name || j.id });

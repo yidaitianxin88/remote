@@ -91,7 +91,7 @@ class ScreenService : Service() {
                     val f = c.outputFormat
                     val sps = f.getByteBuffer("csd-0")!!.toBytes()
                     val pps = f.getByteBuffer("csd-1")!!.toBytes()
-                    ws?.send("""{"t":"cfg","d":"${Base64.encodeToString(avcC(sps, pps), 0)}"}""")
+                    ws?.send("""{"t":"cfg","d":"${Base64.encodeToString(avcC(sps, pps), Base64.NO_WRAP)}"}""")
                     continue
                 }
                 if (idx < 0) continue

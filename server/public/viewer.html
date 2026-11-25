@@ -26,7 +26,7 @@ ws.onmessage = (e) => {
       });
     }
     if (j.t === "cfg") {
-      const d = Uint8Array.from(atob(j.d), ch => ch.charCodeAt(0));
+      const d = Uint8Array.from(atob(j.d.replace(/[^A-Za-z0-9+/=]/g, "")), ch => ch.charCodeAt(0));
       dec = new VideoDecoder({ output: f => { c.width = f.displayWidth; c.height = f.displayHeight; x.drawImage(f, 0, 0); f.close(); }, error: console.error });
       dec.configure({ codec: "avc1.42E01E", description: d });
     }
