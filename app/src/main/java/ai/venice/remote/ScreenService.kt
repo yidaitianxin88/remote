@@ -10,6 +10,7 @@ import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
 import android.util.Base64
+import android.widget.Toast
 import okhttp3.*
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
@@ -30,7 +31,7 @@ class ScreenService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_upload).build()
         startForeground(1, n)
         val data = i.getParcelableExtra<Intent>("data")!!
-        proj = getSystemService(MediaProjectionManager::class.java).getMediaProjection(RESULT_OK, data)
+        proj = getSystemService(MediaProjectionManager::class.java).getMediaProjection(android.app.Activity.RESULT_OK, data)
         connect()
         return START_STICKY
     }
@@ -47,7 +48,7 @@ class ScreenService : Service() {
             override fun onMessage(w: WebSocket, t: String) {
                 val j = JSONObject(t)
                 when (j.optString("t")) {
-                    "code" -> Hub.code = j.optString("code")
+                    "code" -> { Hub.code = j.optString("code"); Toast.makeText(this@ScreenService, "配对码 " + Hub.code, Toast.LENGTH_LONG).show() }
                     "tap" -> Hub.control?.tap(j.getDouble("x").toFloat(), j.getDouble("y").toFloat())
                     "swipe" -> Hub.control?.swipe(
                         j.getDouble("x1").toFloat(), j.getDouble("y1").toFloat(),
