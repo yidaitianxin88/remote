@@ -1,4 +1,4 @@
-package ai.venice.remote
+﻿package ai.venice.remote
 
 import android.app.*
 import android.content.Intent
@@ -8,9 +8,13 @@ import android.media.MediaFormat
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.Settings
 import android.util.Base64
+import android.util.Log
+import android.widget.Toast
 import okhttp3.*
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
@@ -22,6 +26,7 @@ class ScreenService : Service() {
     private var proj: MediaProjection? = null
     private var ws: WebSocket? = null
     private var running = true
+    private var started = false
     private val devId: String by lazy {
         Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
     }
@@ -37,6 +42,7 @@ class ScreenService : Service() {
         val data = i.getParcelableExtra<Intent>("data")!!
         proj = getSystemService(MediaProjectionManager::class.java)
             .getMediaProjection(android.app.Activity.RESULT_OK, data)
+        proj?.registerCallback(object : MediaProjection.Callback() {}, Handler(Looper.getMainLooper()))
         connect()
         return START_STICKY
     }
@@ -46,11 +52,22 @@ class ScreenService : Service() {
         getSystemService(NotificationManager::class.java).createNotificationChannel(c)
     }
 
+    private fun toast(s: String) {
+        Handler(Looper.getMainLooper()).post { Toast.makeText(this, s, Toast.LENGTH_LONG).show() }
+    }
+
     private fun connect() {
         val req = Request.Builder().url(Hub.SERVER).build()
         ws = OkHttpClient().newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(w: WebSocket, r: Response) {
                 w.send("""{"t":"hello","role":"phone","id":"$devId","name":"$devName"}""")
+                if (!started) {
+                    started = true
+                    try { startEncode() } catch (e: Exception) {
+                        Log.e("zl", "encode", e)
+                        toast("编码失败: " + e.message)
+                    }
+                }
             }
             override fun onMessage(w: WebSocket, t: String) {
                 val j = JSONObject(t)
@@ -62,9 +79,11 @@ class ScreenService : Service() {
                     "text" -> Hub.control?.text(j.getString("s"))
                 }
             }
-            override fun onFailure(w: WebSocket, e: Throwable, r: Response?) { if (running) connect() }
+            override fun onFailure(w: WebSocket, e: Throwable, r: Response?) {
+                Log.e("zl", "ws fail", e)
+                if (running) Handler(Looper.getMainLooper()).postDelayed({ if (running) connect() }, 2000)
+            }
         })
-        startEncode()
     }
 
     private fun startEncode() {
@@ -85,21 +104,25 @@ class ScreenService : Service() {
 
         Thread {
             val info = MediaCodec.BufferInfo()
-            while (running) {
-                val idx = c.dequeueOutputBuffer(info, 10_000)
-                if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    val f = c.outputFormat
-                    val sps = f.getByteBuffer("csd-0")!!.toBytes()
-                    val pps = f.getByteBuffer("csd-1")!!.toBytes()
-                    ws?.send("""{"t":"cfg","d":"${Base64.encodeToString(avcC(sps, pps), Base64.NO_WRAP)}"}""")
-                    continue
+            try {
+                while (running) {
+                    val idx = c.dequeueOutputBuffer(info, 10_000)
+                    if (idx == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                        val f = c.outputFormat
+                        val sps = f.getByteBuffer("csd-0")!!.toBytes()
+                        val pps = f.getByteBuffer("csd-1")!!.toBytes()
+                        ws?.send("""{"t":"cfg","d":"${Base64.encodeToString(avcC(sps, pps), Base64.NO_WRAP)}"}""")
+                        continue
+                    }
+                    if (idx < 0) continue
+                    val buf = c.getOutputBuffer(idx)!!
+                    buf.position(info.offset); buf.limit(info.offset + info.size)
+                    val bytes = ByteArray(info.size).also { buf.get(it) }
+                    c.releaseOutputBuffer(idx, false)
+                    if (bytes.isNotEmpty()) ws?.send(bytes.toByteString())
                 }
-                if (idx < 0) continue
-                val buf = c.getOutputBuffer(idx)!!
-                buf.position(info.offset); buf.limit(info.offset + info.size)
-                val bytes = ByteArray(info.size).also { buf.get(it) }
-                c.releaseOutputBuffer(idx, false)
-                if (bytes.isNotEmpty()) ws?.send(bytes.toByteString())
+            } catch (e: Exception) {
+                Log.e("zl", "loop", e)
             }
         }.start()
     }
@@ -117,7 +140,9 @@ class ScreenService : Service() {
 
     override fun onDestroy() {
         running = false
-        codec?.stop(); proj?.stop(); ws?.close(1000, null)
+        try { codec?.stop() } catch (_: Exception) {}
+        try { proj?.stop() } catch (_: Exception) {}
+        ws?.close(1000, null)
         super.onDestroy()
     }
 }

@@ -21,7 +21,7 @@ wss.on("connection", (s) => {
     if (bin) { if (s.peer) s.peer.send(m); return; }
     let j; try { j = JSON.parse(m); } catch { return; }
     if (j.t === "hello" && j.role === "phone") {
-      s.role = "phone"; s.id = j.id;
+      s.role = "phone"; s.id = j.id; console.log("phone up", j.id, j.name);
       phones.set(j.id, { ws: s, name: j.name || j.id });
       viewers.forEach(v => v.send(list()));
     } else if (j.t === "list") {
@@ -34,7 +34,7 @@ wss.on("connection", (s) => {
       s.send(JSON.stringify({ t: "ok" }));
     } else if (s.peer) s.peer.send(m);
   });
-  s.on("close", () => {
+  s.on("close", () => { console.log("sock close", s.role, s.id);
     viewers.delete(s);
     if (s.id) { phones.delete(s.id); viewers.forEach(v => v.send(list())); }
   });
