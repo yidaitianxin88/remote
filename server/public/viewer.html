@@ -1,22 +1,38 @@
-﻿<!doctype html><meta charset="utf-8"><title>Remote</title>
-<style>body{margin:0;background:#000}canvas{width:100vw;height:100vh;object-fit:contain}</style>
+<!doctype html><meta charset="utf-8"><title>Remote</title>
+<style>
+body{margin:0;background:#111;color:#eee;font:14px system-ui}
+#list{padding:16px}#list button{display:block;margin:8px 0;padding:10px 14px;width:100%;text-align:left;
+background:#222;color:#eee;border:1px solid #444;border-radius:8px;cursor:pointer}
+canvas{display:none;width:100vw;height:100vh;object-fit:contain;background:#000}
+</style>
+<div id="list"><b>在线设备</b><div id="items">等待…</div></div>
 <canvas id="c"></canvas>
 <script>
 const c = document.getElementById("c"), x = c.getContext("2d");
-let dec, code = prompt("输入手机上的 6 位码");
 const ws = new WebSocket("wss://" + location.host + "/ws");
 ws.binaryType = "arraybuffer";
-ws.onopen = () => ws.send(JSON.stringify({ t: "join", code }));
-ws.onmessage = async (e) => {
+let dec, joined = false;
+ws.onopen = () => ws.send(JSON.stringify({ t: "list" }));
+ws.onmessage = (e) => {
   if (typeof e.data === "string") {
     const j = JSON.parse(e.data);
+    if (j.t === "list") {
+      document.getElementById("items").innerHTML = j.items.length ? "" : "暂无设备";
+      j.items.forEach(d => {
+        const b = document.createElement("button");
+        b.textContent = d.name;
+        b.onclick = () => { joined = true; document.getElementById("list").style.display = "none"; c.style.display = "block"; ws.send(JSON.stringify({ t: "join", id: d.id })); };
+        document.getElementById("items").appendChild(b);
+      });
+    }
     if (j.t === "cfg") {
       const d = Uint8Array.from(atob(j.d), ch => ch.charCodeAt(0));
       dec = new VideoDecoder({ output: f => { c.width = f.displayWidth; c.height = f.displayHeight; x.drawImage(f, 0, 0); f.close(); }, error: console.error });
       dec.configure({ codec: "avc1.42E01E", description: d });
     }
-  } else {
-    dec?.decode(new EncodedVideoChunk({ type: "key", timestamp: performance.now() * 1000, data: new Uint8Array(e.data) }));
+    if (j.t === "err") alert(j.msg);
+  } else if (dec) {
+    dec.decode(new EncodedVideoChunk({ type: "key", timestamp: performance.now() * 1000, data: new Uint8Array(e.data) }));
   }
 };
 const pos = ev => ({ x: ev.offsetX / c.clientWidth, y: ev.offsetY / c.clientHeight });

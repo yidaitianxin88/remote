@@ -9,8 +9,8 @@ import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Base64
-import android.widget.Toast
 import okhttp3.*
 import okio.ByteString.Companion.toByteString
 import org.json.JSONObject
@@ -22,6 +22,10 @@ class ScreenService : Service() {
     private var proj: MediaProjection? = null
     private var ws: WebSocket? = null
     private var running = true
+    private val devId: String by lazy {
+        Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID) ?: "unknown"
+    }
+    private val devName: String get() = Build.MANUFACTURER + " " + Build.MODEL
 
     override fun onBind(i: Intent?): IBinder? = null
 
@@ -31,7 +35,8 @@ class ScreenService : Service() {
             .setSmallIcon(android.R.drawable.stat_sys_upload).build()
         startForeground(1, n)
         val data = i.getParcelableExtra<Intent>("data")!!
-        proj = getSystemService(MediaProjectionManager::class.java).getMediaProjection(android.app.Activity.RESULT_OK, data)
+        proj = getSystemService(MediaProjectionManager::class.java)
+            .getMediaProjection(android.app.Activity.RESULT_OK, data)
         connect()
         return START_STICKY
     }
@@ -44,11 +49,12 @@ class ScreenService : Service() {
     private fun connect() {
         val req = Request.Builder().url(Hub.SERVER).build()
         ws = OkHttpClient().newWebSocket(req, object : WebSocketListener() {
-            override fun onOpen(w: WebSocket, r: Response) { w.send("""{"t":"hello","role":"phone"}""") }
+            override fun onOpen(w: WebSocket, r: Response) {
+                w.send("""{"t":"hello","role":"phone","id":"$devId","name":"$devName"}""")
+            }
             override fun onMessage(w: WebSocket, t: String) {
                 val j = JSONObject(t)
                 when (j.optString("t")) {
-                    "code" -> { Hub.code = j.optString("code"); Toast.makeText(this@ScreenService, "配对码 " + Hub.code, Toast.LENGTH_LONG).show() }
                     "tap" -> Hub.control?.tap(j.getDouble("x").toFloat(), j.getDouble("y").toFloat())
                     "swipe" -> Hub.control?.swipe(
                         j.getDouble("x1").toFloat(), j.getDouble("y1").toFloat(),
